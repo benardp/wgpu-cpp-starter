@@ -24,36 +24,34 @@
 #include <SDL_syswm.h>
 
 #if defined(_WIN32)
-#include <dawn_native/D3D12Backend.h>
+#include <dawn/native/D3D12Backend.h>
 #elif defined(__APPLE__)
-#include <dawn_native/MetalBackend.h>
+#include <dawn/native/MetalBackend.h>
 #include "metal_util.h"
 #else
-#include <dawn_native/VulkanBackend.h>
+#include <dawn/native/VulkanBackend.h>
 #endif
 
 #endif
 
 const std::string WGSL_SHADER = R"(
 struct VertexInput {
-    [[location(0)]] position: vec4<f32>;
-    [[location(1)]] color: vec4<f32>;
+    @location(0) position: vec4<f32>;
+    @location(1) color: vec4<f32>;
 };
 
 struct VertexOutput {
-    [[builtin(position)]] position: vec4<f32>;
-    [[location(0)]] color: vec4<f32>;
+    @builtin(position) position: vec4<f32>;
+    @location(0) color: vec4<f32>;
 };
 
-[[block]]
 struct ViewParams {
     view_proj: mat4x4<f32>;
 };
 
-[[group(0), binding(0)]]
-var<uniform> view_params: ViewParams;
+@group(0) @binding(0) var<uniform> view_params: ViewParams;
 
-[[stage(vertex)]]
+@stage(vertex)
 fn vertex_main(vert: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.color = vert.color;
@@ -61,8 +59,8 @@ fn vertex_main(vert: VertexInput) -> VertexOutput {
     return out;
 };
 
-[[stage(fragment)]]
-fn fragment_main(in: VertexOutput) -> [[location(0)]] vec4<f32> {
+@stage(fragment)
+fn fragment_main(in: VertexOutput) -> @location(0) vec4<f32> {
     return vec4<f32>(in.color);
 }
 )";
@@ -423,10 +421,10 @@ void loop_iteration(void *_app_state)
 
     wgpu::RenderPassColorAttachment color_attachment;
     color_attachment.view = app_state->swap_chain.GetCurrentTextureView();
-    color_attachment.clearColor.r = 0.f;
-    color_attachment.clearColor.g = 0.f;
-    color_attachment.clearColor.b = 0.f;
-    color_attachment.clearColor.a = 1.f;
+    color_attachment.clearValue.r = 0.f;
+    color_attachment.clearValue.g = 0.f;
+    color_attachment.clearValue.b = 0.f;
+    color_attachment.clearValue.a = 1.f;
     color_attachment.loadOp = wgpu::LoadOp::Clear;
     color_attachment.storeOp = wgpu::StoreOp::Store;
 
@@ -445,7 +443,7 @@ void loop_iteration(void *_app_state)
     render_pass_enc.SetVertexBuffer(0, app_state->vertex_buf);
     render_pass_enc.SetBindGroup(0, app_state->bind_group);
     render_pass_enc.Draw(3);
-    render_pass_enc.EndPass();
+    render_pass_enc.End();
 
     wgpu::CommandBuffer commands = encoder.Finish();
     // Here the # refers to the number of command buffers being submitted

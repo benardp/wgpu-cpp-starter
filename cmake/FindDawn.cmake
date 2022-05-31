@@ -1,14 +1,14 @@
 find_path(DAWN_WGPU_INCLUDE_DIR
     NAME dawn/webgpu.h
     PATHS
-    ${Dawn_DIR}/gen/src/include/
+    ${Dawn_DIR}/gen/include/
 )
 mark_as_advanced(DAWN_WGPU_INCLUDE_DIR)
 
 find_path(DAWN_INCLUDE_DIR
     NAME dawn/EnumClassBitmasks.h
     PATHS
-    ${Dawn_DIR}/../../src/include/
+    ${Dawn_DIR}/../../include/
 )
 mark_as_advanced(DAWN_INCLUDE_DIR)
 
