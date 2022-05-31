@@ -184,7 +184,7 @@ int main(int argc, const char **argv)
     // TODO Later: Maybe set up a native Vulkan swap chain instead, a bit more work but
     // may avoid possible XWayland compatibility issues since it can then run natively on
     // Wayland
-    wgpu::SurfaceDescriptorFromXlib native_surf;
+    wgpu::SurfaceDescriptorFromXlibWindow native_surf;
     native_surf.display = wm_info.info.x11.display;
     native_surf.window = wm_info.info.x11.window;
 #endif

@@ -21,6 +21,8 @@ if (NOT EMSCRIPTEN)
         add_definitions(-DDAWN_ENABLE_BACKEND_D3D12)
     elseif (APPLE)
         add_definitions(-DDAWN_ENABLE_BACKEND_METAL)
+    else()
+        find_package(Vulkan)
     endif()
 
     find_package(Threads REQUIRED)
@@ -29,6 +31,9 @@ if (NOT EMSCRIPTEN)
 
     add_library(webgpu_cpp webgpu_cpp.cpp)
     target_link_libraries(webgpu_cpp PUBLIC Dawn)
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(webgpu_cpp PUBLIC Vulkan::Vulkan)
+    endif()
 else()
     set(CMAKE_EXE_LINKER_FLAGS "-s USE_WEBGPU=1")
     # Generate the index.html file that will load our Emscripten compiled module
