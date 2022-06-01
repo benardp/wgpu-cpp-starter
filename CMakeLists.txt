@@ -9,6 +9,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/cmake")
 include(ExternalProject)
 
 include(cmake/glm.cmake)
+include(cmake/glfw.cmake)
 
 add_definitions(-DGLM_ENABLE_EXPERIMENTAL)
 
@@ -21,19 +22,13 @@ if (NOT EMSCRIPTEN)
         add_definitions(-DDAWN_ENABLE_BACKEND_D3D12)
     elseif (APPLE)
         add_definitions(-DDAWN_ENABLE_BACKEND_METAL)
-    else()
-        find_package(Vulkan)
     endif()
 
     find_package(Threads REQUIRED)
-    find_package(SDL2 CONFIG REQUIRED)
     find_package(Dawn REQUIRED)
 
     add_library(webgpu_cpp webgpu_cpp.cpp)
     target_link_libraries(webgpu_cpp PUBLIC Dawn)
-    if(UNIX AND NOT APPLE)
-        target_link_libraries(webgpu_cpp PUBLIC Vulkan::Vulkan)
-    endif()
 else()
     set(CMAKE_EXE_LINKER_FLAGS "-s USE_WEBGPU=1")
     # Generate the index.html file that will load our Emscripten compiled module
@@ -52,19 +47,10 @@ set_target_properties(wgpu-starter PROPERTIES
 target_link_libraries(wgpu-starter PRIVATE glm)
 
 if (NOT EMSCRIPTEN)
-    if (TARGET SDL2::SDL2)
-        target_link_libraries(wgpu-starter PUBLIC
-            SDL2::SDL2
-            SDL2::SDL2main)
-    else()
-        target_include_directories(wgpu-starter PUBLIC
-            $<BUILD_INTERFACE:${SDL2_INCLUDE_DIRS}>)
-        target_link_libraries(wgpu-starter PUBLIC ${SDL2_LIBRARIES})
-    endif()
-
     target_link_libraries(wgpu-starter
         PUBLIC
-        webgpu_cpp)
+        webgpu_cpp
+        glfw)
 
     if (APPLE)
         find_library(QUARTZ_CORE QuartzCore)
@@ -88,19 +74,10 @@ if (NOT EMSCRIPTEN)
             Dawn
             ${QUARTZ_CORE}
             ${METAL_LIB}
-            ${COCOA_LIB})
+            ${COCOA_LIB}
+            glfw)
 
-        set_target_properties(metal_util PROPERTIES
-            CXX_STANDARD 11)
-
-        if (TARGET SDL2::SDL2)
-            target_link_libraries(metal_util PUBLIC
-                SDL2::SDL2)
-        else()
-            target_include_directories(metal_util PUBLIC
-                $<BUILD_INTERFACE:${SDL2_INCLUDE_DIRS}>)
-            target_link_libraries(metal_util PUBLIC ${SDL2_LIBRARIES})
-        endif()
+        set_target_properties(metal_util PROPERTIES CXX_STANDARD 11)
 
         target_link_libraries(wgpu-starter PUBLIC metal_util)
     endif()

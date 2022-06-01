@@ -19,19 +19,20 @@
 #include <dawn/dawn_proc.h>
 #include <dawn/webgpu_cpp.h>
 
-// Note: include order does matter on Linux
-#include <SDL.h>
-#include <SDL_syswm.h>
-
 #if defined(_WIN32)
 #include <dawn/native/D3D12Backend.h>
+#define GLFW_EXPOSE_NATIVE_WIN32
 #elif defined(__APPLE__)
 #include <dawn/native/MetalBackend.h>
 #include "metal_util.h"
 #else
 #include <dawn/native/VulkanBackend.h>
+#define GLFW_EXPOSE_NATIVE_X11
+#define GLFW_INCLUDE_VULKAN
 #endif
-
+#include <GLFW/glfw3native.h>
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
 #endif
 
 const std::string WGSL_SHADER = R"(
@@ -100,11 +101,15 @@ struct AppState {
 
     bool done = false;
     bool camera_changed = true;
-    glm::vec2 prev_mouse = glm::vec2(-2.f);
+    glm::vec2 prev_mouse;
+    enum TrackMode { TM_NO_TRACK = 0, TM_ROTATE, TM_PAN };
+    TrackMode tracking_mode = TM_NO_TRACK;
 };
 
 int win_width = 640;
 int win_height = 480;
+GLFWwindow *window;
+AppState *app_state;
 
 glm::vec2 transform_mouse(glm::vec2 in)
 {
@@ -113,9 +118,56 @@ glm::vec2 transform_mouse(glm::vec2 in)
 
 void loop_iteration(void *_app_state);
 
+#ifndef __EMSCRIPTEN__
+static void error_callback(int error, const char *description)
+{
+    fputs(description, stderr);
+}
+
+static void key_callback(GLFWwindow *window, int key, int scancode, int action, int mods)
+{
+    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS) {
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+        app_state->done = true;
+    }
+}
+
+static void cursor_position_callback(GLFWwindow *window, double xpos, double ypos)
+{
+    const glm::vec2 curr_mouse = transform_mouse(glm::vec2(xpos, ypos));
+    if (app_state->tracking_mode == AppState::TM_ROTATE) {
+        app_state->camera.rotate(app_state->prev_mouse, curr_mouse);
+        app_state->camera_changed = true;
+    } else if (app_state->tracking_mode == AppState::TM_PAN) {
+        app_state->camera.pan(curr_mouse - app_state->prev_mouse);
+        app_state->camera_changed = true;
+    }
+    app_state->prev_mouse = curr_mouse;
+}
+
+static void mouse_button_callback(GLFWwindow *window, int button, int action, int mods)
+{
+    if (action == GLFW_PRESS) {
+        if (button == GLFW_MOUSE_BUTTON_LEFT) {
+            app_state->tracking_mode = AppState::TM_ROTATE;
+        } else if (button == GLFW_MOUSE_BUTTON_RIGHT) {
+            app_state->tracking_mode = AppState::TM_PAN;
+        }
+    } else if (action == GLFW_RELEASE) {
+        app_state->tracking_mode = AppState::TM_NO_TRACK;
+    }
+}
+
+static void scroll_callback(GLFWwindow *window, double xoffset, double yoffset)
+{
+    app_state->camera.zoom(yoffset * 0.05f);
+    app_state->camera_changed = true;
+}
+#endif
+
 int main(int argc, const char **argv)
 {
-    AppState *app_state = new AppState;
+    app_state = new AppState;
 
 #ifdef __EMSCRIPTEN__
     wgpu::Instance instance;
@@ -138,12 +190,22 @@ int main(int argc, const char **argv)
     wgpu::Instance instance = dawn_instance.Get();
     app_state->device = wgpu::Device::Acquire(adapter.CreateDevice());
 
-    SDL_Window *window = SDL_CreateWindow("wgpu-starter",
-                                          SDL_WINDOWPOS_CENTERED,
-                                          SDL_WINDOWPOS_CENTERED,
-                                          win_width,
-                                          win_height,
-                                          0);
+    glfwSetErrorCallback(error_callback);
+
+    if (!glfwInit())
+        exit(EXIT_FAILURE);
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    window = glfwCreateWindow(win_width, win_height, "wgpu-starter", NULL, NULL);
+    if (!window) {
+        glfwTerminate();
+        exit(EXIT_FAILURE);
+    }
+
+    glfwSetKeyCallback(window, key_callback);
+    glfwSetCursorPosCallback(window, cursor_position_callback);
+    glfwSetMouseButtonCallback(window, mouse_button_callback);
+    glfwSetScrollCallback(window, scroll_callback);
 
 #endif
     app_state->device.SetUncapturedErrorCallback(
@@ -165,28 +227,17 @@ int main(int argc, const char **argv)
 
     // Setup the swap chain for the native API
 #if defined(_WIN32)
-    SDL_SysWMinfo wm_info;
-    SDL_VERSION(&wm_info.version);
-    SDL_GetWindowWMInfo(window, &wm_info);
-
     wgpu::SurfaceDescriptorFromWindowsHWND native_surf;
-    native_surf.hwnd = wm_info.info.win.window;
-    native_surf.hinstance = wm_info.info.win.hinstance;
+    native_surf.hwnd = glfwGetWin32Window(window);
+    native_surf.hinstance = GetModuleHandle(nullptr);
 #elif defined(__APPLE__)
     auto metal_context = metal::make_context(window);
     wgpu::SurfaceDescriptorFromMetalLayer native_surf =
         metal::surface_descriptor(metal_context);
 #else
-    SDL_SysWMinfo wm_info;
-    SDL_VERSION(&wm_info.version);
-    SDL_GetWindowWMInfo(window, &wm_info);
-
-    // TODO Later: Maybe set up a native Vulkan swap chain instead, a bit more work but
-    // may avoid possible XWayland compatibility issues since it can then run natively on
-    // Wayland
     wgpu::SurfaceDescriptorFromXlibWindow native_surf;
-    native_surf.display = wm_info.info.x11.display;
-    native_surf.window = wm_info.info.x11.window;
+    native_surf.display = glfwGetX11Display();
+    native_surf.window = glfwGetX11Window(window);
 #endif
 
     wgpu::SurfaceDescriptor surface_desc;
@@ -326,10 +377,13 @@ int main(int argc, const char **argv)
 #ifdef __EMSCRIPTEN__
     emscripten_set_main_loop_arg(loop_iteration, app_state, -1, 0);
 #else
-    while (!app_state->done) {
+    while (!glfwWindowShouldClose(window) && !app_state->done) {
         loop_iteration(app_state);
+        glfwPollEvents();
     }
-    SDL_DestroyWindow(window);
+    glfwDestroyWindow(window);
+
+    glfwTerminate();
 #endif
     return 0;
 }
@@ -369,36 +423,36 @@ void loop_iteration(void *_app_state)
 {
     AppState *app_state = reinterpret_cast<AppState *>(_app_state);
 #ifndef __EMSCRIPTEN__
-    SDL_Event event;
-    // TODO: Because I don't make the window/canvas with SDL_CreateWindow
-    // it won't attach the listeners properly to get events with SDL.
-    // So I need to use the Emscripten HTML5 input API to get events instead
-    while (SDL_PollEvent(&event)) {
-        if (event.type == SDL_QUIT) {
-            app_state->done = true;
-        }
-        if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) {
-            app_state->done = true;
-        }
-        if (event.type == SDL_MOUSEMOTION) {
-            const glm::vec2 cur_mouse =
-                transform_mouse(glm::vec2(event.motion.x, event.motion.y));
-            if (app_state->prev_mouse != glm::vec2(-2.f)) {
-                if (event.motion.state & SDL_BUTTON_LMASK) {
-                    app_state->camera.rotate(app_state->prev_mouse, cur_mouse);
-                    app_state->camera_changed = true;
-                } else if (event.motion.state & SDL_BUTTON_RMASK) {
-                    app_state->camera.pan(cur_mouse - app_state->prev_mouse);
-                    app_state->camera_changed = true;
-                }
-            }
-            app_state->prev_mouse = cur_mouse;
-        }
-        if (event.type == SDL_MOUSEWHEEL) {
-            app_state->camera.zoom(event.wheel.y * 0.05f);
-            app_state->camera_changed = true;
-        }
-    }
+    // SDL_Event event;
+    // // TODO: Because I don't make the window/canvas with SDL_CreateWindow
+    // // it won't attach the listeners properly to get events with SDL.
+    // // So I need to use the Emscripten HTML5 input API to get events instead
+    // while (SDL_PollEvent(&event)) {
+    //     if (event.type == SDL_QUIT) {
+    //         app_state->done = true;
+    //     }
+    //     if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE) {
+    //         app_state->done = true;
+    //     }
+    //     if (event.type == SDL_MOUSEMOTION) {
+    //         const glm::vec2 cur_mouse =
+    //             transform_mouse(glm::vec2(event.motion.x, event.motion.y));
+    //         if (app_state->prev_mouse != glm::vec2(-2.f)) {
+    //             if (event.motion.state & SDL_BUTTON_LMASK) {
+    //                 app_state->camera.rotate(app_state->prev_mouse, cur_mouse);
+    //                 app_state->camera_changed = true;
+    //             } else if (event.motion.state & SDL_BUTTON_RMASK) {
+    //                 app_state->camera.pan(cur_mouse - app_state->prev_mouse);
+    //                 app_state->camera_changed = true;
+    //             }
+    //         }
+    //         app_state->prev_mouse = cur_mouse;
+    //     }
+    //     if (event.type == SDL_MOUSEWHEEL) {
+    //         app_state->camera.zoom(event.wheel.y * 0.05f);
+    //         app_state->camera_changed = true;
+    //     }
+    // }
 #else
     emscripten_set_mousemove_callback("#webgpu-canvas", app_state, true, mouse_move_callback);
     emscripten_set_wheel_callback("#webgpu-canvas", app_state, true, mouse_wheel_callback);

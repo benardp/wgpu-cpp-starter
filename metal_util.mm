@@ -4,7 +4,9 @@
 #include <Cocoa/Cocoa.h>
 #include <Metal/Metal.h>
 #include <QuartzCore/CAMetalLayer.h>
-#include <SDL_syswm.h>
+
+#define GLFW_EXPOSE_NATIVE_COCOA
+#import <GLFW/glfw3native.h>
 
 namespace metal {
 
@@ -12,13 +14,13 @@ struct Context {
     id<MTLDevice> device = nullptr;
     CAMetalLayer *layer = nullptr;
 
-    Context(SDL_Window *window);
+    Context(GLFWwindow *window);
     ~Context();
 
     std::string device_name() const;
 };
 
-Context::Context(SDL_Window *window)
+Context::Context(GLFWwindow *window)
 {
     // Take the first Metal device
     NSArray<id<MTLDevice>> *devices = MTLCopyAllDevices();
@@ -29,17 +31,13 @@ Context::Context(SDL_Window *window)
     [device retain];
     [devices release];
 
-    SDL_SysWMinfo wm_info;
-    SDL_VERSION(&wm_info.version);
-    SDL_GetWindowWMInfo(window, &wm_info);
-
     // Setup the Metal layer
     layer = [CAMetalLayer layer];
     layer.device = device;
     layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
     layer.framebufferOnly = NO;
 
-    NSWindow *nswindow = wm_info.info.cocoa.window;
+    NSWindow* nswindow = glfwGetCocoaWindow(window);
     nswindow.contentView.layer = layer;
     nswindow.contentView.wantsLayer = YES;
 }
@@ -54,7 +52,7 @@ std::string Context::device_name() const
     return [device.name UTF8String];
 }
 
-std::shared_ptr<Context> make_context(SDL_Window *window)
+std::shared_ptr<Context> make_context(GLFWwindow *window)
 {
     return std::make_shared<Context>(window);
 }
