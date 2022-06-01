@@ -30,9 +30,9 @@
 #define GLFW_EXPOSE_NATIVE_X11
 #define GLFW_INCLUDE_VULKAN
 #endif
-#include <GLFW/glfw3native.h>
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
 #endif
 
 const std::string WGSL_SHADER = R"(
